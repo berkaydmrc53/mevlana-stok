@@ -65,6 +65,8 @@ const API = (() => {
     addMiss: (pid, v, q, note) => call('add_miss', { ...t(), p_product: pid, p_variant: v, p_qty: q, p_note: note }),
     myExpected: () => call('my_expected', t()),
     adminWorkers: (action, acc, name) => call('admin_workers', { ...t(), p_action: action, p_account: acc, p_name: name }),
-    adminAudit: () => call('admin_audit', t())
+    adminAudit: () => call('admin_audit', t()),
+    sendTransfer: (to, items) => call('send_transfer', { ...t(), p_to: to, p_items: items }),
+    adminSetDayTag: (day, tag) => call('admin_set_day_tag', { ...t(), p_day: day, p_tag: tag })
   };
 })();

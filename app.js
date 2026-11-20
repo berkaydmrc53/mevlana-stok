@@ -4,6 +4,8 @@ const DAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 const LABELS = [['0', 'Pzt'], ['00', 'Sal'], ['000', 'Çar'], ['0000', 'Per'], ['00000', 'Cum'], ['000000', 'Cmt'], ['0000000', 'Paz']];
 const REASONS = ['Tarihi geçti', 'Düştü/ezildi', 'Bozuk geldi', 'Diğer'];
 const KINDS = [['zayi', 'Zayi (çöp)'], ['personel', 'Personel yedi'], ['ikram', 'İkram'], ['imalathane_iade', 'İmalathaneye iade'], ['musteri_iade', 'Müşteri iadesi']];
+const TAGS = [['normal', 'Normal', '☀️'], ['kotu_hava', 'Kötü hava', '🌧️'], ['ozel_gun', 'Özel gün / Bayram', '🎉'], ['resmi_tatil', 'Resmi tatil', '🏖️']];
+const tagOf = id => TAGS.find(t => t[0] === id);
 const kindName = k => (KINDS.find(x => x[0] === (k || 'zayi')) || KINDS[0])[1];
 
 const S = { products: [], view: 'login', search: '', open: new Set(), tab: 'bugun', wlist: {} };
@@ -60,8 +62,8 @@ function isOver(k, val) {
   if (!API.session || API.session.role !== 'sube' || !SB.hasPrev || val == null) return false;
   return val > (SB.expected[k] ?? 0) + 0.01;
 }
-function counter(p, v, draft) {
-  const k = K(p.id, v), val = draft[k];
+function counter(p, v, draft, keyV) {
+  const k = K(p.id, keyV !== undefined ? keyV : v), val = draft[k];
   return `<div class="ctr ${val ? 'has' : ''} ${val === 0 ? 'zero' : ''} ${isOver(k, val) ? 'over' : ''}">
     ${v != null ? `<span class="boy">Boy ${v}</span>` : ''}
     <button class="cb minus" data-ctr="-1" data-k="${k}" aria-label="Azalt">−</button>
@@ -69,7 +71,22 @@ function counter(p, v, draft) {
     <button class="cb plus" data-ctr="1" data-k="${k}" aria-label="Artır">+</button>
   </div>`;
 }
-function productList(draft) {
+function neededSlots() {
+  if (!SB.hasPrev) return [];
+  const out = [];
+  for (const p of S.products.filter(p => p.active)) for (const v of variantsOf(p) || [null]) { const k = K(p.id, v); if ((SB.expected[k] || 0) > 0) out.push([p, v, k]); }
+  return out;
+}
+function neededHtml(draft) {
+  const ns = neededSlots(); if (!ns.length) return '';
+  const q = trLower(S.search.trim());
+  const rows = ns.filter(([p]) => !q || trLower(p.name).includes(q) || trLower(p.grp).includes(q));
+  if (!rows.length) return '';
+  return `<section class="grp open need"><div class="grp-h static"><span>📋 Sayılması gerekenler</span><span class="badge">${ns.filter(([, , k]) => draft[k] != null).length}/${ns.length}</span></div>
+    <div class="grp-b"><p class="muted small-p">Dünkü kalan ve bugün gelenlere göre rafta olması gereken ürünler.</p>${rows.map(([p, v]) => `<div class="row"><div class="nm">${esc(p.name)}${v != null ? ` · Boy ${v}` : ''}<small>en fazla ${num(SB.expected[K(p.id, v)])}</small></div>${counter(p, null, draft, v)}</div>`).join('')}</div></section>
+    <h3 class="sec other-h">Diğer ürünler <small>(stokta görünmüyor; dokunulmayanlar 0 sayılır)</small></h3>`;
+}
+function productList(draft, countView) {
   const q = trLower(S.search.trim()), groups = [];
   for (const p of S.products) {
     if (!p.active) continue;
@@ -85,7 +102,7 @@ function productList(draft) {
     return `<section class="grp ${isOpen ? 'open' : ''}">
       <button class="grp-h" data-grp="${esc(g.name)}"><span>${esc(g.name)}</span>
         <span class="badge">${filled ? filled + '/' : ''}${g.items.length}</span><i>▾</i></button>
-      <div class="grp-b">${isOpen && API.session.role === 'sube' && filledSlots(g.items, draft) < slotsOf(g.items) ? `<button class="chip zero-btn" data-zero="${esc(g.name)}">Kalan boşları 0 yap (rafta yok)</button>` : ''}${isOpen ? g.items.map(p => {
+      <div class="grp-b">${isOpen && countView && filledSlots(g.items, draft) < slotsOf(g.items) ? `<button class="chip zero-btn" data-zero="${esc(g.name)}">Kalan boşları 0 yap (rafta yok)</button>` : ''}${isOpen ? g.items.map(p => {
         const vs = variantsOf(p);
         return `<div class="row ${vs ? 'multi' : ''}">
           <div class="nm">${esc(p.name)}<small>${vs ? '' : esc(p.unit)}</small></div>
@@ -101,15 +118,14 @@ function bumpDraft(draft, k, dir, saveFn) {
   const [pid] = splitK(k), p = P(pid), st = stepOf(p);
   let next = Math.max(0, Math.round(((draft[k] ?? 0) + dir * st) * 10) / 10);
   draft[k] = next; saveFn();
-  const el = document.querySelector(`.cv[data-v="${CSS.escape(k)}"]`);
-  if (el) { const c = el.closest('.ctr'); el.textContent = num(next); c.classList.toggle('has', next > 0); c.classList.toggle('zero', next === 0); c.classList.toggle('over', isOver(k, next)); }
+  document.querySelectorAll(`.cv[data-v="${CSS.escape(k)}"]`).forEach(el => { const c = el.closest('.ctr'); el.textContent = num(next); c.classList.toggle('has', next > 0); c.classList.toggle('zero', next === 0); c.classList.toggle('over', isOver(k, next)); });
   updateProgress();
   if (navigator.vibrate) navigator.vibrate(8);
 }
 
 /* ================= ŞUBE ================= */
 const SB = {
-  day: null, pending: [], doneToday: [], expected: {}, hasPrev: false,
+  day: null, pending: [], doneToday: [], outgoing: [], expected: {}, hasPrev: false,
   key() { return `mvs_draft_${API.session.account}_${bizDay()}`; },
   draft() { return store.get(this.key(), { kalan: {}, zayi: [] }); },
   save(d) { store.set(this.key(), d); },
@@ -118,8 +134,10 @@ const SB = {
     this.day = day;
     this.hasPrev = !!(ex && ex.has_prev); this.expected = {};
     for (const it of (ex && ex.items) || []) this.expected[K(it.product_id, it.variant)] = +it.max;
-    this.pending = sh.filter(s => s.status === 'bekliyor');
-    this.doneToday = sh.filter(s => s.status !== 'bekliyor');
+    const own = API.session.account;
+    this.pending = sh.filter(s => s.branch_id === own && s.status === 'bekliyor');
+    this.doneToday = sh.filter(s => s.branch_id === own && s.status !== 'bekliyor');
+    this.outgoing = sh.filter(s => s.from_branch === own);
   }
 };
 
@@ -132,8 +150,26 @@ function sbMenu() {
       ${n ? `<span class="pill">${n} bekliyor</span>` : `<small class="tile-s">Bekleyen yok</small>`}</button>
     <button class="big tile alt" data-go="sayim"><span class="em">🌙</span>Gün Sonu Sayım</button>
     <button class="big ghost" data-go="ozet">Özet ve Onay</button>
+    <button class="big ghost" data-go="transfer">🔁 Başka şubeye gönder${SB.outgoing.filter(o => o.status === 'bekliyor').length ? ` <span class="pill sm">${SB.outgoing.filter(o => o.status === 'bekliyor').length}</span>` : ''}</button>
     <button class="big ghost" data-go="yok">🙋 Müşteri istedi, yoktu${d.misses && d.misses.length ? ` <span class="pill sm">${d.misses.length}</span>` : ''}</button>
   </main>`;
+}
+const TR = { to: null, drafts: {} };
+function sbTransfer() {
+  const own = API.session.account, others = branches().filter(b => b.id !== own);
+  const st = { bekliyor: '⏳ Teslim bekliyor', tamam: '✓ Teslim alındı', eksik: '⚠ Eksik bildirildi' };
+  const sent = SB.outgoing.length ? `<h3 class="sec">Bugün gönderdiklerin</h3>${SB.outgoing.map(o => `<section class="card"><div class="card-h"><b>→ ${esc(o.branch_name)}</b><small>${dayTime(o.sent_at)} · ${esc(o.sent_by)}</small></div>
+      <div class="note ${o.status === 'tamam' ? 'ok' : o.status === 'eksik' ? 'warn' : ''}">${st[o.status]}</div>
+      <ul class="ln">${o.items.map(i => `<li><span>${esc(pname(i.product_id, i.variant))}</span><b>${num(i.qty_sent)}</b></li>`).join('')}</ul>
+      ${o.status === 'bekliyor' ? `<button class="big ghost danger" data-cancel="${o.id}">İptal et</button>` : ''}</section>`).join('')}` : '';
+  if (!TR.to) return `${header('Başka şubeye gönder', true)}<main class="pad">
+    <p class="muted">Acil durumda başka şubeye ürün verdiyseniz buraya girin. Karşı şube "Gelen Sevkiyat"tan onaylar. Böylece ürün sizde satılmış, onlarda eksik görünmez.</p>
+    <label>Hangi şubeye?</label><div class="col">${others.map(b => `<button class="big ghost" data-trto="${b.id}">${esc(b.name)}</button>`).join('')}</div>${sent}</main>`;
+  const d = TR.drafts[TR.to] ||= {}, n = Object.values(d).filter(q => q > 0).length, bn = (others.find(b => b.id === TR.to) || {}).name || '';
+  return `${header('→ ' + bn, true)}
+  <div class="search"><input id="q" class="inp" type="search" placeholder="Ürün ara…" value="${esc(S.search)}" autocomplete="off"></div>
+  <main class="list"><div id="plist">${productList(d)}</div></main>
+  <footer class="bar"><button class="big ghost" data-act="tr-change">Şube değiştir</button><button class="big primary" data-act="tr-send">Gönder${n ? ` (${n})` : ''}</button></footer>`;
 }
 function sbYok() {
   const ms = SB.day.misses || [];
@@ -148,7 +184,7 @@ function sbYok() {
 function sbSevk() {
   const lab = labelOf(bizDay());
   const card = s => `<section class="card" data-sid="${s.id}">
-      <div class="card-h"><b>${dayTime(s.sent_at)}</b><small>Gönderen: ${esc(s.sent_by)}</small></div>
+      <div class="card-h"><b>${dayTime(s.sent_at)}</b><small>Gönderen: ${s.from_branch ? esc(s.from_name) + ' şubesi' : 'İmalathane'} · ${esc(s.sent_by)}</small></div>
       ${s.items.map(i => `<div class="row"><div class="nm">${esc(pname(i.product_id, i.variant))}
           <small>Gönderilen: ${num(i.qty_sent)} ${esc(unitShort(P(i.product_id) || { unit: 'Adet' }))}</small></div>
         <div class="ctr has"><button class="cb minus" data-rec="-1" data-i="${i.id}">−</button>
@@ -172,7 +208,7 @@ function sbSayim() {
   const d = SB.draft();
   return `${header('Gün Sonu Sayım', true)}
   <div class="search"><input id="q" class="inp" type="search" placeholder="Ürün ara…" value="${esc(S.search)}" autocomplete="off"></div>
-  <main class="list"><div id="prog">${progressHtml(d.kalan)}</div><p class="muted hint">Raftaki kalanları sayın. Rafta olmayanlara − ile 0 girin ya da grubun içindeki "0 yap" butonunu kullanın.</p><div id="plist">${productList(d.kalan)}</div></main>
+  <main class="list"><div id="prog">${progressHtml(d.kalan)}</div><p class="muted hint">Raftaki kalanları sayın. Rafta olmayanlara − ile 0 girin ya da grubun içindeki "0 yap" butonunu kullanın.</p><div id="plist">${neededHtml(d.kalan)}${productList(d.kalan, true)}</div></main>
   <footer class="bar">
     <button class="big ghost" data-act="zayi">+ Zayi / Çıkış${d.zayi.length ? ` (${d.zayi.length})` : ''}</button>
     <button class="big primary" data-go="ozet">Özete geç</button>
@@ -180,8 +216,19 @@ function sbSayim() {
 }
 
 function progressHtml(kalan) {
-  const act = S.products.filter(p => p.active), tot = slotsOf(act), done = filledSlots(act, kalan), pc = tot ? Math.round(done / tot * 100) : 0;
-  return `<div class="prog"><div class="prog-t"><b>${done} / ${tot}</b> sayıldı <span>%${pc}</span></div><div class="prog-b"><i style="width:${pc}%"></i></div></div>`;
+  const ns = neededSlots();
+  let tot, done, label;
+  if (ns.length) { tot = ns.length; done = ns.filter(([, , k]) => kalan[k] != null).length; label = 'gereken sayıldı'; }
+  else { const act = S.products.filter(p => p.active); tot = slotsOf(act); done = filledSlots(act, kalan); label = 'sayıldı'; }
+  const pc = tot ? Math.round(done / tot * 100) : 0;
+  return `<div class="prog"><div class="prog-t"><b>${done} / ${tot}</b> ${label} <span>%${pc}</span></div><div class="prog-b"><i style="width:${pc}%"></i></div></div>`;
+}
+// Stokta görünmeyen ve dokunulmayan kalemler (gönderirken 0 sayılır)
+function autoZeroKeys(kalan) {
+  if (!SB.hasPrev) return [];
+  const out = [];
+  for (const p of S.products.filter(p => p.active)) for (const v of variantsOf(p) || [null]) { const k = K(p.id, v); if (kalan[k] == null && !((SB.expected[k] || 0) > 0)) out.push(k); }
+  return out;
 }
 function updateProgress() {
   const el = document.getElementById('prog');
@@ -202,9 +249,9 @@ function sbOzet() {
   const d = SB.draft();
   const counts = Object.entries(d.kalan).filter(([, q]) => q > 0);
   const zeros = Object.values(d.kalan).filter(q => q === 0).length;
-  const groups = {};
+  const groups = {}, autoZ = new Set(autoZeroKeys(d.kalan));
   for (const p of S.products.filter(p => p.active)) {
-    const miss = (variantsOf(p) || [null]).filter(v => d.kalan[K(p.id, v)] == null).length;
+    const miss = (variantsOf(p) || [null]).filter(v => d.kalan[K(p.id, v)] == null && !autoZ.has(K(p.id, v))).length;
     if (miss) groups[p.grp] = (groups[p.grp] || 0) + miss;
   }
   const missTot = Object.values(groups).reduce((a, b) => a + b, 0);
@@ -214,9 +261,10 @@ function sbOzet() {
     <p class="muted">Bugün girdiklerin · ${trDate(bizDay())}</p>
     ${progressHtml(d.kalan)}
     ${overs.length ? `<div class="note warn"><b>Bu sayılar olağandışı görünüyor:</b><ul class="ln tight">${overs.map(([k, q]) => `<li><span>${esc(pname(...splitK(k)))}<small>Dünkü kalan + bugün gelen = en fazla ${num(SB.expected[k] ?? 0)}</small></span><b>${num(q)}</b></li>`).join('')}</ul>Yanlışsa sayıma dönüp düzeltin.</div>` : ''}
-    ${missTot ? `<div class="note warn"><b>${missTot} kalem sayılmadı</b> (boylar ayrı sayılır). Bunlar için bugün satış hesaplanmayacak:<br>${Object.entries(groups).map(([g, n]) => `${esc(g)} (${n})`).join(', ')}</div>` : `<div class="note ok">Bütün ürünler sayıldı ✓</div>`}
+    ${missTot ? `<div class="note warn"><b>${missTot} kalem sayılmadı</b>${SB.hasPrev ? ' (rafta olması gerekenlerden)' : ' (boylar ayrı sayılır)'}. Bunlar için bugün satış hesaplanmayacak:<br>${Object.entries(groups).map(([g, n]) => `${esc(g)} (${n})`).join(', ')}</div>` : `<div class="note ok">Bütün ürünler sayıldı ✓</div>`}
     <h3>Gün sonu kalan</h3>${counts.length ? `<ul class="ln">${counts.map(([k, q]) => { const [p, v] = splitK(k); return `<li><span>${esc(pname(p, v))}</span><b>${num(q)}</b></li>`; }).join('')}</ul>` : '<p class="empty small">Kayıt yok</p>'}
     ${zeros ? `<p class="muted">${zeros} kalem rafta yok (0) olarak işaretlendi.</p>` : ''}
+    ${autoZ.size ? `<p class="muted">Stokta görünmeyen ve dokunulmayan ${autoZ.size} kalem 0 sayılacak.</p>` : ''}
     <h3>Zayi ve diğer çıkışlar</h3>${d.zayi.length ? `<ul class="ln">${d.zayi.map((z, i) => `<li><span>${esc(pname(z.product_id, z.variant))}<small>${esc(kindName(z.kind))}${z.label ? ' · ' + esc(z.label) : ''}${z.reason ? ' · ' + esc(z.reason) : ''}${z.note ? ' · ' + esc(z.note) : ''}</small></span>
       <b>${num(z.qty)}</b>${z.photo ? `<img src="${z.photo}" alt="">` : ''}<button class="x" data-delz="${i}" aria-label="Sil">✕</button></li>`).join('')}</ul>` : '<p class="empty small">Kayıt yok</p>'}
     ${SB.pending.length ? `<div class="note warn">Teslim alınmamış ${SB.pending.length} sevkiyat var. Önce onları onaylayın.</div>` : ''}
@@ -442,13 +490,17 @@ function computeDays(data) {
     const last = {}, acc = {};
     let prevDay = null;
     subs.forEach((s, i) => {
-      const rec = {};
+      const rec = {}, trOut = {};
+      const inWin = day => day && day <= s.day && (prevDay ? day > prevDay : day >= s.day);
       for (const sh of data.shipments) {
-        if (sh.branch !== b || sh.status === 'bekliyor' || !sh.day) continue;
-        if (sh.day > s.day || (prevDay ? sh.day <= prevDay : sh.day < s.day)) continue;
-        for (const it of sh.items) { const k = K(it.p, it.v); rec[k] = (rec[k] || 0) + +(it.rec ?? it.sent); }
+        if (sh.branch === b && sh.status !== 'bekliyor' && inWin(sh.day))
+          for (const it of sh.items) { const k = K(it.p, it.v); rec[k] = (rec[k] || 0) + +(it.rec ?? it.sent); }
+        if (sh.from === b && inWin(sh.sent_day))
+          for (const it of sh.items) { const k = K(it.p, it.v); trOut[k] = (trOut[k] || 0) + +it.sent; }
       }
-      const kalanRaw = countsBy[s.id] || {}, outs = outBy[s.id] || {}, ins = inBy[s.id] || {};
+      const kalanRaw = countsBy[s.id] || {}, ins = inBy[s.id] || {};
+      const outs = { ...(outBy[s.id] || {}) };
+      for (const [k, q] of Object.entries(trOut)) outs[k] = (outs[k] || 0) + q;
       const counted = k => !s.v2 || k in kalanRaw;
       const keys = new Set([...Object.keys(last), ...Object.keys(acc), ...Object.keys(rec), ...Object.keys(kalanRaw), ...Object.keys(outs), ...Object.keys(ins)]);
       const sold = {}, avail = {}, kalan = {}, neg = [];
@@ -468,7 +520,7 @@ function computeDays(data) {
       }
       const uncounted = s.v2 ? slots.filter(k => !(k in kalanRaw)) : [];
       out.push({ branch: b, day: s.day, worker: s.worker, at: s.at, sid: s.id, v2: s.v2, sold, waste: wasteBy[s.id] || {}, other: otherBy[s.id] || {},
-        rec, kalan, avail, base: i === 0, neg, uncounted });
+        rec, trOut, kalan, avail, base: i === 0, neg, uncounted });
       prevDay = s.day;
     });
   }
@@ -505,6 +557,11 @@ function adAlerts() {
     + AD.data.shipments.filter(s => s.status === 'eksik' && !store.get('mvs_seen_eksik', []).includes(s.id)).length;
 }
 
+const dayTag = day => ((AD.data && AD.data.day_tags) || []).find(x => x.day === day);
+function tagChips(day) {
+  const cur = dayTag(day);
+  return `<div class="tagrow"><small>Gün etiketi:</small><div class="chips sm">${TAGS.map(([id, t, e]) => `<button class="chip ${cur && cur.tag === id ? 'on' : ''}" data-dtag="${id}" data-tday="${day}">${e} ${t}</button>`).join('')}</div></div>`;
+}
 function adBugun() {
   const today = bizDay(), days = computeDays(AD.data);
   const ag = aggregate(days, today, today, 'all');
@@ -514,6 +571,7 @@ function adBugun() {
       <div class="kpi"><small>Bugünkü satış</small><b>${tl(ag.soldTL)}</b></div>
       <div class="kpi red"><small>Bugünkü zayi</small><b>${tl(ag.wasteTL)}</b></div>
     </div>
+    ${tagChips(today)}
     ${bs.map(b => {
       const d = ag.sel.find(x => x.branch === b.id);
       const pend = AD.data.shipments.filter(s => s.branch === b.id && s.status === 'bekliyor').length;
@@ -574,22 +632,27 @@ function adRapor() {
         ${all.length > 15 ? `<details><summary class="chip">Tüm ürünler (${all.length})</summary><div class="tbl"><table><tbody>${all.slice(15).map(tr).join('')}</tbody></table></div></details>` : ''}
         ${noPrice ? `<p class="muted">${noPrice} ürünün fiyatı girilmemiş, onlar 0 ₺ görünür. Ayarlar'dan ekleyebilirsin.</p>` : ''}`; })()}
     <h3 class="sec">Haftanın günlerine göre ortalama satış</h3>${bars([1, 2, 3, 4, 5, 6, 0].map(i => [DAYS[i], ag.byDow[i]]), tl)}
-    <h3 class="sec">Günlük satış</h3>${Object.keys(ag.byDay).length ? bars(Object.entries(ag.byDay).sort().map(([d, v]) => [trDate(d).slice(0, 5) + ' ' + DAYS[dow(d)], v]), tl) : '<p class="empty small">Satış hesabı için en az iki günlük sayım gerekir.</p>'}
+    ${(() => { const by = {}; for (const [d, v] of Object.entries(ag.byDay)) { const t = dayTag(d), key = t ? t.tag : 'yok'; (by[key] ||= []).push(v); }
+      const ent = Object.entries(by); if (ent.length < 2 && !ent.some(([k]) => k !== 'yok')) return '';
+      return `<h3 class="sec">Gün etiketine göre ortalama günlük satış</h3>${bars(ent.map(([k, a]) => [k === 'yok' ? 'Etiketsiz' : tagOf(k)[2] + ' ' + tagOf(k)[1], a.reduce((x, y) => x + y, 0) / a.length]), tl)}`; })()}
+    <h3 class="sec">Günlük satış</h3>${Object.keys(ag.byDay).length ? bars(Object.entries(ag.byDay).sort().map(([d, v]) => [trDate(d).slice(0, 5) + ' ' + DAYS[dow(d)] + (dayTag(d) ? ' ' + tagOf(dayTag(d).tag)[2] : ''), v]), tl) : '<p class="empty small">Satış hesabı için en az iki günlük sayım gerekir.</p>'}
   </main>${tabs()}`;
 }
 
 function adDetay() {
   const b = AD.detBranch || branches()[0]?.id, day = AD.detDay || bizDay();
   const days = computeDays(AD.data), d = days.find(x => x.branch === b && x.day === day);
-  const sh = AD.data.shipments.filter(s => s.branch === b && (s.day === day || (s.status === 'bekliyor' && day === bizDay())));
+  const sh = AD.data.shipments.filter(s => (s.branch === b && (s.day === day || (s.status === 'bekliyor' && day === bizDay()))) || (s.from === b && s.sent_day === day));
+  const bn2 = id => (S.accounts.find(a => a.id === id) || {}).name || id;
   const wl = d ? AD.data.waste.filter(w => w.sid === d.sid) : [];
   const list = (obj, f) => { const e = Object.entries(obj).filter(([, q]) => q > 0); return e.length ? `<ul class="ln">${e.map(([k, q]) => `<li><span>${esc(pname(...splitK(k)))}</span><b>${num(q)}</b>${f ? `<small class="r">${tl(q * priceOf(...splitK(k), day))}</small>` : ''}</li>`).join('')}</ul>` : '<p class="empty small">Kayıt yok</p>'; };
   const ms = (AD.data.misses || []).filter(m => m.branch === b && m.day === day);
   return `${header('Şube Detayı')}<main class="pad admin">
     <div class="chips sm">${branches().map(x => `<button class="chip ${x.id === b ? 'on' : ''}" data-detb="${x.id}">${esc(x.name)}</button>`).join('')}</div>
     <div class="daynav"><button class="chip" data-dday="-1">‹ Önceki</button><input type="date" id="dday" class="inp" value="${day}" max="${bizDay()}"><button class="chip" data-dday="1" ${day >= bizDay() ? 'disabled' : ''}>Sonraki ›</button></div>
+    ${tagChips(day)}
     ${d ? `<div class="note ok">Sayım: ${esc(d.worker)} · ${hhmm(d.at)}</div>` : `<div class="note warn">Bu gün sayım girilmemiş.</div>`}
-    ${d && d.neg.length ? `<div class="note warn"><b>⚠ Tutarsız sayılar</b> (satış eksi çıkıyor, sayım ya da sevkiyat hatalı olabilir):<ul class="ln tight">${d.neg.map(n => `<li><span>${esc(pname(...splitK(n.k)))}<small>önceki ${num(n.open)} + gelen ${num(n.rec)} − kalan ${num(n.kal)} − çıkış ${num(n.out)}</small></span><b>${num(n.q)}</b></li>`).join('')}</ul></div>` : ''}
+    ${d && d.neg.length ? `<div class="note warn"><b>⚠ Tutarsız sayılar</b> (satış eksi çıkıyor, sayım ya da sevkiyat hatalı olabilir):<ul class="ln tight">${d.neg.map(n => `<li><span>${esc(pname(...splitK(n.k)))}<small>önceki ${num(n.open)} + gelen ${num(n.rec)} − kalan ${num(n.kal)} − çıkış/transfer ${num(n.out)}</small></span><b>${num(n.q)}</b></li>`).join('')}</ul></div>` : ''}
     ${d && d.uncounted.length ? `<div class="note warn">${d.uncounted.length} kalem sayılmadı: ${d.uncounted.slice(0, 12).map(k => esc(pname(...splitK(k)))).join(', ')}${d.uncounted.length > 12 ? '…' : ''}</div>` : ''}
     <h3 class="sec">Satılan (hesaplanan)</h3>${d && !d.base ? list(d.sold, true) : '<p class="empty small">Hesaplanamıyor (önceki gün sayımı yok)</p>'}
     <h3 class="sec">Gün sonu kalan</h3>${d ? `<ul class="ln">${Object.entries(d.kalan).filter(([, q]) => q >= 0).sort((a, c) => (c[1] > 0) - (a[1] > 0)).map(([k, q]) => `<li><span>${esc(pname(...splitK(k)))}</span><b>${num(q)}</b><button class="chip ed" data-editc="${k}" data-sid="${d.sid}" data-q="${q}" aria-label="Düzelt">✎</button></li>`).join('') || '<li><span class="muted">Kayıt yok</span></li>'}</ul>
@@ -597,7 +660,7 @@ function adDetay() {
     <h3 class="sec">Zayi ve diğer çıkışlar</h3>${wl.length ? `<ul class="ln">${wl.map(w => `<li><span>${esc(pname(w.p, w.v))}<small>${esc(kindName(w.kind))}${w.label ? ' · ' + esc(w.label) : ''}${w.reason ? ' · ' + esc(w.reason) : ''}${w.note ? ' · ' + esc(w.note) : ''}</small></span><b>${num(w.q)}</b>${w.photo ? `<button class="chip" data-photo="${w.id}">📷</button>` : ''}<button class="chip ed" data-editw="${w.id}" data-q="${w.q}" aria-label="Düzelt">✎</button></li>`).join('')}</ul>` : '<p class="empty small">Zayi yok</p>'}
     ${d ? `<p class="muted">✎ ile sayıyı değiştirebilirsin (kalanda 0 = rafta yok, zayide 0 = sil). Düzeltmeler satış hesabına hemen yansır ve değişiklik kaydına yazılır.</p>` : ''}
     <h3 class="sec">Müşteri istedi, yoktu</h3>${ms.length ? `<ul class="ln">${ms.map(m => `<li><span>${esc(pname(m.p, m.v))}<small>${esc(m.worker)} · ${hhmm(m.at)}${m.note ? ' · ' + esc(m.note) : ''}</small></span><b>${num(m.q)}</b></li>`).join('')}</ul>` : '<p class="empty small">Kayıt yok</p>'}
-    <h3 class="sec">Sevkiyatlar</h3>${sh.length ? sh.map(s => `<section class="card"><div class="card-h"><b>${dayTime(s.sent_at)}</b><small>${esc(s.sent_by)} → ${s.status === 'bekliyor' ? 'teslim bekliyor' : esc(s.confirmed_by) + ' ' + hhmm(s.confirmed_at)}</small></div>
+    <h3 class="sec">Sevkiyatlar ve transferler</h3>${sh.length ? sh.map(s => `<section class="card"><div class="card-h"><b>${s.from === b ? '🔁 → ' + esc(bn2(s.branch)) + ' şubesine gönderildi' : s.from ? '🔁 ' + esc(bn2(s.from)) + ' şubesinden geldi' : '📦 İmalathaneden'} · ${dayTime(s.sent_at)}</b><small>${esc(s.sent_by)} → ${s.status === 'bekliyor' ? 'teslim bekliyor' : esc(s.confirmed_by) + ' ' + hhmm(s.confirmed_at)}</small></div>
       <ul class="ln">${s.items.map(i => `<li><span>${esc(pname(i.p, i.v))}</span><b>${num(i.sent)}${i.rec != null && +i.rec !== +i.sent ? ` <i class="warn-t">→ ${num(i.rec)}</i>` : ''}</b></li>`).join('')}</ul></section>`).join('') : '<p class="empty small">Sevkiyat yok</p>'}
   </main>${tabs()}`;
 }
@@ -613,7 +676,7 @@ function adTalep() {
       ${c.status === 'bekliyor' ? `<div class="row2"><button class="big ghost" data-corr="${c.id}" data-st="reddedildi">Reddet</button><button class="big primary" data-corr="${c.id}" data-st="yapildi">Tamam</button></div>`
         : `<div class="note ${c.status === 'yapildi' ? 'ok' : ''}">${c.status === 'yapildi' ? 'Tamamlandı' : 'Reddedildi'}</div>`}</section>`).join('') : '<p class="empty small">Talep yok</p>'}
     <h3 class="sec">Eksik gelen sevkiyatlar</h3>
-    ${eks.length ? eks.map(s => `<section class="card ${seen.includes(s.id) ? '' : 'new'}"><div class="card-h"><b>${esc(bn(s.branch))}</b><small>${dayTime(s.confirmed_at)} · ${esc(s.confirmed_by)}</small></div>
+    ${eks.length ? eks.map(s => `<section class="card ${seen.includes(s.id) ? '' : 'new'}"><div class="card-h"><b>${esc(bn(s.branch))}${s.from ? ' ← ' + esc(bn(s.from)) + ' şubesi' : ''}</b><small>${dayTime(s.confirmed_at)} · ${esc(s.confirmed_by)}</small></div>
       <ul class="ln">${s.items.filter(i => +i.rec < +i.sent).map(i => `<li><span>${esc(pname(i.p, i.v))}</span><b>${num(i.sent)} gönderildi → ${num(i.rec)} geldi</b></li>`).join('')}</ul>
       ${seen.includes(s.id) ? '' : `<button class="big ghost" data-seen="${s.id}">Gördüm</button>`}</section>`).join('') : '<p class="empty small">Eksik sevkiyat yok</p>'}
   </main>${tabs()}`;
@@ -657,7 +720,7 @@ function adAyar() {
 
 const AUDIT_NAMES = { kalan_duzeltme: 'Kalan düzeltildi', zayi_duzeltme: 'Zayi düzeltildi', personel_duzeltme: 'Personel çıkışı düzeltildi', ikram_duzeltme: 'İkram düzeltildi',
   imalathane_iade_duzeltme: 'İade düzeltildi', musteri_iade_duzeltme: 'Müşteri iadesi düzeltildi', sevkiyat_iptal: 'Sevkiyat iptal edildi', pin_degisti: 'PIN değişti',
-  fiyat_degisti: 'Fiyat değişti', raf_omru_degisti: 'Raf ömrü değişti', urun_eklendi: 'Ürün eklendi', urun_kaldirildi: 'Ürün satıştan kaldırıldı', urun_satisa_alindi: 'Ürün satışa alındı',
+  fiyat_degisti: 'Fiyat değişti', gun_etiketi: 'Gün etiketi', raf_omru_degisti: 'Raf ömrü değişti', urun_eklendi: 'Ürün eklendi', urun_kaldirildi: 'Ürün satıştan kaldırıldı', urun_satisa_alindi: 'Ürün satışa alındı',
   talep_yapildi: 'Talep tamamlandı', talep_reddedildi: 'Talep reddedildi', calisan_ekle: 'Çalışan eklendi', calisan_sil: 'Çalışan kaldırıldı' };
 function auditText(x) {
   let t = (AUDIT_NAMES[x.action] || x.action) + (x.target ? ' — ' + x.target.replace(/ürün (\d+)/, (m, id) => (P(id) || {}).name || m) : '');
@@ -698,10 +761,11 @@ async function exportMonth(offset) {
       .forEach(([k, r]) => { const [n, v] = pinfo(k); subeUrun.push([b.name, n, v, r.s, r.st, r.w, r.wt]); });
   }
   // Günlük
-  const gunluk = [['Tarih', 'Gün', 'Şube', 'Satış (₺)', 'Zayi (₺)', 'Sayımı yapan', 'Saat']];
+  const gunluk = [['Tarih', 'Gün', 'Şube', 'Satış (₺)', 'Zayi (₺)', 'Sayımı yapan', 'Saat', 'Gün etiketi']];
+  const tagName = day => { const t = (data.day_tags || []).find(x => x.day === day); return t ? tagOf(t.tag)[1] : ''; };
   days.filter(inM).sort((a, b) => a.day < b.day ? -1 : a.day > b.day ? 1 : a.branch < b.branch ? -1 : 1).forEach(d => {
     const ag = aggregate([d], d.day, d.day, 'all');
-    gunluk.push([trDate(d.day), DAYS[dow(d.day)], bn(d.branch), d.base ? null : ag.soldTL, ag.wasteTL, d.worker, hhmm(d.at)]);
+    gunluk.push([trDate(d.day), DAYS[dow(d.day)], bn(d.branch), d.base ? null : ag.soldTL, ag.wasteTL, d.worker, hhmm(d.at), tagName(d.day)]);
   });
   // Zayi kayıtları
   const sub = Object.fromEntries(data.submissions.map(s => [s.id, s]));
@@ -717,18 +781,18 @@ async function exportMonth(offset) {
   (data.misses || []).filter(m => m.day >= first && m.day <= last).sort((a, b) => a.at < b.at ? -1 : 1)
     .forEach(m => talep.push([trDate(m.day), hhmm(m.at), bn(m.branch), m.worker, (P(m.p) || {}).name || '#' + m.p, m.v != null ? 'Boy ' + m.v : '', +m.q, m.note || '']));
   // Sevkiyatlar
-  const sevk = [['Tarih', 'Şube', 'Gönderen', 'Teslim alan', 'Ürün', 'Boy', 'Gönderilen', 'Gelen', 'Durum']];
+  const sevk = [['Tarih', 'Kaynak', 'Alan şube', 'Gönderen', 'Teslim alan', 'Ürün', 'Boy', 'Gönderilen', 'Gelen', 'Durum']];
   data.shipments.filter(s => s.day && s.day >= first && s.day <= last).sort((a, b) => a.sent_at < b.sent_at ? -1 : 1)
-    .forEach(s => s.items.forEach(i => sevk.push([trDate(s.day), bn(s.branch), s.sent_by, s.confirmed_by || '', (P(i.p) || {}).name || '#' + i.p, i.v != null ? 'Boy ' + i.v : '', +i.sent, i.rec != null ? +i.rec : null, s.status === 'tamam' ? 'Tam' : s.status === 'eksik' ? 'Eksik' : 'Bekliyor'])));
+    .forEach(s => s.items.forEach(i => sevk.push([trDate(s.day), s.from ? bn(s.from) : 'İmalathane', bn(s.branch), s.sent_by, s.confirmed_by || '', (P(i.p) || {}).name || '#' + i.p, i.v != null ? 'Boy ' + i.v : '', +i.sent, i.rec != null ? +i.rec : null, s.status === 'tamam' ? 'Tam' : s.status === 'eksik' ? 'Eksik' : 'Bekliyor'])));
   XLSX_MINI.download([
     { name: 'Özet', rows: [['Mevlana Pastaneleri — ' + ayAdi], ...ozet], head: [1], widths: [22, 16, 14, 16, 14, 18], money: [1, 2, 3], totalRow: ozet.length },
     { name: 'Ürünler', rows: urun, widths: [30, 8, 8, 11, 10, 14, 12, 12, 14], money: [3, 5, 7, 8] },
     { name: 'Şube-Ürün', rows: subeUrun, widths: [18, 30, 8, 10, 14, 12, 12], money: [4, 6] },
-    { name: 'Günlük', rows: gunluk, widths: [12, 6, 18, 14, 12, 18, 8], money: [3, 4] },
+    { name: 'Günlük', rows: gunluk, widths: [12, 6, 18, 14, 12, 18, 8, 16], money: [3, 4] },
     { name: 'Zayi kayıtları', rows: zayi, widths: [12, 18, 28, 8, 9, 10, 14, 20, 12], money: [8] },
     { name: 'Diğer çıkışlar', rows: diger, widths: [12, 18, 18, 28, 8, 9, 20, 12], money: [7] },
     { name: 'Müşteri talepleri', rows: talep, widths: [12, 7, 18, 16, 28, 8, 9, 24] },
-    { name: 'Sevkiyatlar', rows: sevk, widths: [12, 18, 16, 16, 28, 8, 11, 9, 10] }
+    { name: 'Sevkiyatlar', rows: sevk, widths: [12, 18, 18, 16, 16, 28, 8, 11, 9, 10] }
   ], `Mevlana-Stok-${ym}.xlsx`);
   toast(ayAdi + ' Excel dosyası indirildi');
 }
@@ -760,7 +824,7 @@ async function render() {
     if (!s) { $app.innerHTML = viewLogin(); return; }
     if (s.role === 'sube') {
       if (S.view !== 'sayim' || !SB.day) await SB.load();
-      $app.innerHTML = S.view === 'sevk' ? sbSevk() : S.view === 'sayim' ? sbSayim() : S.view === 'ozet' ? sbOzet() : S.view === 'yok' ? sbYok() : sbMenu();
+      $app.innerHTML = S.view === 'sevk' ? sbSevk() : S.view === 'sayim' ? sbSayim() : S.view === 'ozet' ? sbOzet() : S.view === 'yok' ? sbYok() : S.view === 'transfer' ? sbTransfer() : sbMenu();
     } else if (s.role === 'imalathane') {
       if (S.view === 'im-liste') IM.list = await API.shipments();
       $app.innerHTML = S.view === 'im-yeni' ? imYeni() : S.view === 'im-liste' ? imListe() : imMenu();
@@ -792,6 +856,11 @@ $app.addEventListener('click', async e => {
     SB.save(dr); toast(`${n} kalem 0 (rafta yok) yapıldı`); rerenderList(); updateProgress(); return;
   }
   if (d.ctr) {
+    if (s.role === 'sube' && S.view === 'transfer') {
+      const dr = TR.drafts[TR.to] ||= {}; bumpDraft(dr, d.k, +d.ctr, () => {});
+      const n = Object.values(dr).filter(q => q > 0).length, b = document.querySelector('[data-act="tr-send"]');
+      if (b) b.textContent = 'Gönder' + (n ? ` (${n})` : ''); return;
+    }
     if (s.role === 'sube') { const dr = SB.draft(); return bumpDraft(dr.kalan, d.k, +d.ctr, () => SB.save(dr)); }
     const dr = IM.drafts[IM.branch]; bumpDraft(dr, d.k, +d.ctr, () => {});
     const n = Object.values(dr).filter(q => q > 0).length, sb = document.querySelector('[data-act="im-send"]');
@@ -805,6 +874,12 @@ $app.addEventListener('click', async e => {
   }
   if (d.delz != null && s.role === 'sube') { const dr = SB.draft(); dr.zayi.splice(+d.delz, 1); SB.save(dr); return render(); }
   if (d.imb) { IM.branch = d.imb; S.open.clear(); return render(); }
+  if (d.trto) { TR.to = d.trto; S.open.clear(); S.search = ''; return render(); }
+  if (d.dtag != null) {
+    const day = d.tday, cur = (AD.data.day_tags || []).find(x => x.day === day);
+    try { await API.adminSetDayTag(day, cur && cur.tag === d.dtag ? '' : d.dtag); await adLoad(true); render(); } catch (x) { toast(x.message); }
+    return;
+  }
   if (d.tab) { S.tab = d.tab; window.scrollTo(0, 0); return render(); }
   if (d.range) { AD.range = d.range; await adLoad(); return render(); }
   if (d.br) { AD.branch = d.br; return render(); }
@@ -881,6 +956,7 @@ $app.addEventListener('click', async e => {
     case 'retry': return render();
     case 'back':
       if (s.role === 'imalathane' && S.view === 'im-yeni' && IM.branch) { IM.branch = null; return render(); }
+      if (s.role === 'sube' && S.view === 'transfer' && TR.to) { TR.to = null; return render(); }
       return go('menu');
     case 'logout':
       if (!confirm('Çıkış yapılsın mı?')) return;
@@ -912,12 +988,13 @@ $app.addEventListener('click', async e => {
     case 'submit': {
       if (SB.pending.length && !confirm('Teslim alınmamış sevkiyat var. Yine de sayımı onaylamak istiyor musun?')) return;
       const dr = SB.draft();
-      const act = S.products.filter(p => p.active), missing = slotsOf(act) - filledSlots(act, dr.kalan);
+      const auto = autoZeroKeys(dr.kalan);
+      const act = S.products.filter(p => p.active), missing = slotsOf(act) - filledSlots(act, dr.kalan) - auto.length;
       const overN = Object.entries(dr.kalan).filter(([k, q]) => isOver(k, q)).length;
       if (overN && !confirm(`${overN} üründe sayı olağandışı görünüyor (dünkü kalan + bugün gelenden fazla). Yine de gönderilsin mi?`)) return;
       if (missing && !confirm(`${missing} kalem sayılmadı. Bunlar için satış hesaplanmayacak. Yine de gönderilsin mi?`)) return;
       if (!confirm('Sayım ve çıkışlar gönderilsin mi? Sonra değiştirilemez.')) return;
-      const counts = Object.entries(dr.kalan).filter(([, q]) => q != null && q >= 0).map(([k, q]) => { const [p, v] = splitK(k); return { product_id: p, variant: v, qty: q }; });
+      const counts = [...Object.entries(dr.kalan), ...auto.map(k => [k, 0])].filter(([, q]) => q != null && q >= 0).map(([k, q]) => { const [p, v] = splitK(k); return { product_id: p, variant: v, qty: q }; });
       try { t.disabled = true; t.textContent = 'Gönderiliyor…'; await API.submitDay(counts, dr.zayi); store.del(SB.key()); toast('Onaylandı ✓'); render(); }
       catch (x) { toast(x.message); t.disabled = false; t.textContent = 'Onayla ve gönder'; }
       return;
@@ -928,6 +1005,17 @@ $app.addEventListener('click', async e => {
       return;
     }
     case 'im-sube': IM.branch = null; return render();
+    case 'tr-change': TR.to = null; return render();
+    case 'tr-send': {
+      const dr = TR.drafts[TR.to] || {};
+      const items = Object.entries(dr).filter(([, q]) => q > 0).map(([k, q]) => { const [p, v] = splitK(k); return { product_id: p, variant: v, qty: q }; });
+      if (!items.length) return toast('Ürün seçilmedi');
+      const bn = branches().find(b => b.id === TR.to).name;
+      if (!confirm(`${bn} şubesine ${items.length} kalem gönderilsin mi?\n\n` + items.map(i => `• ${pname(i.product_id, i.variant)}: ${num(i.qty)}`).join('\n'))) return;
+      try { t.disabled = true; await API.sendTransfer(TR.to, items); delete TR.drafts[TR.to]; TR.to = null; toast('Gönderildi ✓'); render(); }
+      catch (x) { toast(x.message); t.disabled = false; }
+      return;
+    }
     case 'im-send': {
       const dr = IM.drafts[IM.branch] || {};
       const items = Object.entries(dr).filter(([, q]) => q > 0).map(([k, q]) => { const [p, v] = splitK(k); return { product_id: p, variant: v, qty: q }; });
@@ -950,7 +1038,9 @@ $app.addEventListener('click', async e => {
 });
 function rerenderList() {
   const el = document.getElementById('plist'); if (!el) return render();
-  el.innerHTML = productList(API.session.role === 'sube' ? SB.draft().kalan : IM.drafts[IM.branch]);
+  if (API.session.role !== 'sube') el.innerHTML = productList(IM.drafts[IM.branch]);
+  else if (S.view === 'transfer') el.innerHTML = productList(TR.drafts[TR.to] ||= {});
+  else { const k = SB.draft().kalan; el.innerHTML = neededHtml(k) + productList(k, true); }
 }
 $app.addEventListener('input', e => {
   if (e.target.id === 'q') { S.search = e.target.value; rerenderList(); }

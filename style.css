@@ -129,3 +129,7 @@ select.inp{appearance:auto}
 .ln.tight li{padding:6px 0}
 .wrow{padding:8px 0;border-bottom:1px solid var(--pl)}.wrow .chips{margin-top:6px}
 .wrow .chip .x{margin-left:6px;color:inherit;min-height:0;padding:0 2px}
+.grp.need{border-color:var(--p2)}.grp-h.static{cursor:default}
+.small-p{margin:6px 4px 0;font-size:13px}
+.other-h{margin:18px 4px 6px;font-size:16px}
+.tagrow{margin:6px 0 10px}.tagrow small{color:var(--mu)}
