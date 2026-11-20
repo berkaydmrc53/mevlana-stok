@@ -42,6 +42,7 @@ const API = (() => {
     accounts: () => call('login_accounts'),
     async login(account, worker, pin) {
       const s = await call('login', { p_account: account, p_worker: worker, p_pin: pin });
+      if (s && s.error) throw new Error(s.error);
       setSession(s); return s;
     },
     async logout() { try { await call('logout', t()); } catch {} setSession(null); },
@@ -56,6 +57,9 @@ const API = (() => {
     adminPhoto: id => call('admin_photo', { ...t(), p_waste_id: id }),
     adminSetPin: (acc, pin) => call('admin_set_pin', { ...t(), p_account: acc, p_pin: pin }),
     adminSaveProduct: p => call('admin_save_product', { ...t(), p }),
-    adminSetCorrection: (id, st) => call('admin_set_correction', { ...t(), p_id: id, p_status: st })
+    adminSetCorrection: (id, st) => call('admin_set_correction', { ...t(), p_id: id, p_status: st }),
+    adminSetCount: (sid, pid, v, q) => call('admin_set_count', { ...t(), p_sid: sid, p_product: pid, p_variant: v, p_qty: q }),
+    adminSetWaste: (id, q) => call('admin_set_waste', { ...t(), p_id: id, p_qty: q }),
+    cancelShipment: id => call('cancel_shipment', { ...t(), p_id: id })
   };
 })();

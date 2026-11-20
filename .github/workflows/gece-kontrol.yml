@@ -1,0 +1,28 @@
+# Her gece 23:30'da (Türkiye saati) sayım girmeyen şube var mı bakar ve
+# yöneticinin telefonuna ntfy bildirimi gönderir. Bu çalışma aynı zamanda
+# ücretsiz Supabase veritabanının uykuya geçmesini de engeller.
+name: Gece kontrolü
+
+on:
+  schedule:
+    - cron: "30 20 * * *"   # 20:30 UTC = 23:30 Türkiye
+  workflow_dispatch: {}
+
+jobs:
+  kontrol:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sayım girmeyen şubeleri bul ve bildir
+        env:
+          SUPA_URL: https://eatdtawymhgxosgmhmzg.supabase.co/rest/v1/rpc/missing_counts
+          SUPA_KEY: sb_publishable_xj0lgsv_efaQOutJ398PXA_hGNFyxA_
+          NTFY_TOPIC: mevlana-stok-09f8ad5f94
+        run: |
+          set -e
+          eksik=$(curl -sf -X POST "$SUPA_URL" -H "apikey: $SUPA_KEY" -H "Content-Type: application/json" -d '{}')
+          echo "Sayım girmeyenler: $eksik"
+          liste=$(echo "$eksik" | python3 -c 'import sys,json; print(", ".join(json.load(sys.stdin)))')
+          if [ -n "$liste" ]; then
+            curl -s -H "Title: Sayim girilmedi" -H "Priority: high" -H "Tags: warning" \
+              -d "Bu akşam sayım girmeyen şubeler: $liste" "https://ntfy.sh/$NTFY_TOPIC"
+          fi

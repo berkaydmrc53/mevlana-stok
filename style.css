@@ -117,3 +117,5 @@ select.inp{appearance:auto}
 .tbl th{text-align:right;color:var(--mu);font-weight:600;padding:6px 4px;border-bottom:2px solid var(--pl)}.tbl th:first-child{text-align:left}
 .tbl td{text-align:right;padding:8px 4px;border-bottom:1px solid var(--pl);white-space:nowrap}.tbl td:first-child{text-align:left;white-space:normal}
 .tbl td.neg{color:var(--er)}details summary{list-style:none;display:inline-flex;align-items:center;margin:6px 0}details summary::-webkit-details-marker{display:none}
+.chip.ed{min-height:36px;min-width:40px;padding:4px 10px;margin-left:6px}
+.big.danger{color:var(--er);border-color:#f3c7c7;margin-top:10px}

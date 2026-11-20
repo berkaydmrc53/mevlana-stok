@@ -10,3 +10,10 @@ Veriler Supabase'de tutulur. Tablolara doğrudan erişim kapalıdır; uygulama s
 (`supabase/schema.sql`). Fiyatlar ve raporlar yalnızca yönetici oturumuna döner.
 
 Satış hesabı: `önceki gün kalan + gelen − bugün kalan − zayi`.
+
+## Gece kontrolü
+`.github/workflows/gece-kontrol.yml` her gece 23:30'da (TR) sayım girmeyen şubeleri ntfy ile yöneticiye bildirir.
+Aynı çalışma ücretsiz Supabase projesinin uykuya geçmesini de engeller.
+
+## Veritabanı güncellemeleri
+`supabase/schema.sql` ilk kurulum, `supabase/002_guncelleme.sql` PIN kilidi, düzeltme ve iptal fonksiyonları.

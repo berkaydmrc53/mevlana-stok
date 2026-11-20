@@ -291,7 +291,8 @@ function imListe() {
   return `${header('Gönderilenler', true)}<main class="pad">
     ${IM.list.length ? IM.list.map(s => `<section class="card"><div class="card-h"><b>${esc(s.branch_name)}</b><small>${dayTime(s.sent_at)} · ${esc(s.sent_by)}</small></div>
       <div class="note ${s.status === 'tamam' ? 'ok' : s.status === 'eksik' ? 'warn' : ''}">${st[s.status]}${s.confirmed_by ? ` · ${esc(s.confirmed_by)} ${dayTime(s.confirmed_at)}` : ''}</div>
-      <ul class="ln">${s.items.map(i => `<li><span>${esc(pname(i.product_id, i.variant))}</span><b>${num(i.qty_sent)}${i.qty_received != null && +i.qty_received !== +i.qty_sent ? ` → ${num(i.qty_received)}` : ''}</b></li>`).join('')}</ul></section>`).join('')
+      <ul class="ln">${s.items.map(i => `<li><span>${esc(pname(i.product_id, i.variant))}</span><b>${num(i.qty_sent)}${i.qty_received != null && +i.qty_received !== +i.qty_sent ? ` → ${num(i.qty_received)}` : ''}</b></li>`).join('')}</ul>
+      ${s.status === 'bekliyor' ? `<button class="big ghost danger" data-cancel="${s.id}">Bu sevkiyatı iptal et</button>` : ''}</section>`).join('')
       : '<p class="empty">Son 7 günde gönderim yok</p>'}
   </main>`;
 }
@@ -422,6 +423,7 @@ function adRapor() {
     <div class="chips sm">${R.map(([id, t]) => `<button class="chip ${AD.range === id ? 'on' : ''}" data-range="${id}">${t}</button>`).join('')}</div>
     <div class="chips sm">${[['all', 'Tüm şubeler'], ...branches().map(b => [b.id, b.name])].map(([id, t]) => `<button class="chip ${AD.branch === id ? 'on' : ''}" data-br="${id}">${esc(t)}</button>`).join('')}</div>
     <p class="muted">${trDate(from)} – ${trDate(to)}</p>
+    <div class="row2"><button class="big ghost" data-xls="0">⬇ Bu ayın Excel'i</button><button class="big ghost" data-xls="-1">⬇ Geçen ayın Excel'i</button></div>
     <div class="kpis">
       <div class="kpi"><small>Satış</small><b>${tl(ag.soldTL)}</b><small>${num(ag.soldQ)} birim</small></div>
       <div class="kpi red"><small>Zayi</small><b>${tl(ag.wasteTL)}</b><small>Gelenin %${pct(ag.wasteTL, ag.recTL)}'i</small></div>
@@ -455,8 +457,10 @@ function adDetay() {
     <div class="daynav"><button class="chip" data-dday="-1">‹ Önceki</button><input type="date" id="dday" class="inp" value="${day}" max="${bizDay()}"><button class="chip" data-dday="1" ${day >= bizDay() ? 'disabled' : ''}>Sonraki ›</button></div>
     ${d ? `<div class="note ok">Sayım: ${esc(d.worker)} · ${hhmm(d.at)}</div>` : `<div class="note warn">Bu gün sayım girilmemiş.</div>`}
     <h3 class="sec">Satılan (hesaplanan)</h3>${d && !d.base ? list(d.sold, true) : '<p class="empty small">Hesaplanamıyor (önceki gün sayımı yok)</p>'}
-    <h3 class="sec">Gün sonu kalan</h3>${d ? list(d.kalan) : '<p class="empty small">–</p>'}
-    <h3 class="sec">Zayi</h3>${wl.length ? `<ul class="ln">${wl.map(w => `<li><span>${esc(pname(w.p, w.v))}<small>${esc(w.label || '')} · ${esc(w.reason || '')}${w.note ? ' · ' + esc(w.note) : ''}</small></span><b>${num(w.q)}</b>${w.photo ? `<button class="chip" data-photo="${w.id}">📷</button>` : ''}</li>`).join('')}</ul>` : '<p class="empty small">Zayi yok</p>'}
+    <h3 class="sec">Gün sonu kalan</h3>${d ? `<ul class="ln">${Object.entries(d.kalan).filter(([, q]) => q > 0).map(([k, q]) => `<li><span>${esc(pname(...splitK(k)))}</span><b>${num(q)}</b><button class="chip ed" data-editc="${k}" data-sid="${d.sid}" data-q="${q}" aria-label="Düzelt">✎</button></li>`).join('') || '<li><span class="muted">Kayıt yok</span></li>'}</ul>
+      <button class="chip" data-addc="${d.sid}">+ Kalan ekle / düzelt</button>` : '<p class="empty small">–</p>'}
+    <h3 class="sec">Zayi</h3>${wl.length ? `<ul class="ln">${wl.map(w => `<li><span>${esc(pname(w.p, w.v))}<small>${esc(w.label || '')} · ${esc(w.reason || '')}${w.note ? ' · ' + esc(w.note) : ''}</small></span><b>${num(w.q)}</b>${w.photo ? `<button class="chip" data-photo="${w.id}">📷</button>` : ''}<button class="chip ed" data-editw="${w.id}" data-q="${w.q}" aria-label="Düzelt">✎</button></li>`).join('')}</ul>` : '<p class="empty small">Zayi yok</p>'}
+    ${d ? `<p class="muted">✎ ile sayıyı değiştirebilir, 0 yazarak silebilirsin. Düzeltmeler satış hesabına hemen yansır.</p>` : ''}
     <h3 class="sec">Sevkiyatlar</h3>${sh.length ? sh.map(s => `<section class="card"><div class="card-h"><b>${dayTime(s.sent_at)}</b><small>${esc(s.sent_by)} → ${s.status === 'bekliyor' ? 'teslim bekliyor' : esc(s.confirmed_by) + ' ' + hhmm(s.confirmed_at)}</small></div>
       <ul class="ln">${s.items.map(i => `<li><span>${esc(pname(i.p, i.v))}</span><b>${num(i.sent)}${i.rec != null && +i.rec !== +i.sent ? ` <i class="warn-t">→ ${num(i.rec)}</i>` : ''}</b></li>`).join('')}</ul></section>`).join('') : '<p class="empty small">Sevkiyat yok</p>'}
   </main>${tabs()}`;
@@ -474,7 +478,7 @@ function adTalep() {
         : `<div class="note ${c.status === 'yapildi' ? 'ok' : ''}">${c.status === 'yapildi' ? 'Tamamlandı' : 'Reddedildi'}</div>`}</section>`).join('') : '<p class="empty small">Talep yok</p>'}
     <h3 class="sec">Eksik gelen sevkiyatlar</h3>
     ${eks.length ? eks.map(s => `<section class="card ${seen.includes(s.id) ? '' : 'new'}"><div class="card-h"><b>${esc(bn(s.branch))}</b><small>${dayTime(s.confirmed_at)} · ${esc(s.confirmed_by)}</small></div>
-      <ul class="ln">${s.items.filter(i => +i.rec < +i.sent).map(i => `<li><span>${esc(pname(i.p, i.v))}</span><b>${num(i.sent)} istenildi → ${num(i.rec)} geldi</b></li>`).join('')}</ul>
+      <ul class="ln">${s.items.filter(i => +i.rec < +i.sent).map(i => `<li><span>${esc(pname(i.p, i.v))}</span><b>${num(i.sent)} gönderildi → ${num(i.rec)} geldi</b></li>`).join('')}</ul>
       ${seen.includes(s.id) ? '' : `<button class="big ghost" data-seen="${s.id}">Gördüm</button>`}</section>`).join('') : '<p class="empty small">Eksik sevkiyat yok</p>'}
   </main>${tabs()}`;
 }
@@ -502,6 +506,64 @@ function adAyar() {
     <label>Sayım birimi</label><select id="np-u" class="inp">${['Adet', 'Boy (0/1/2)', 'Boy (0/1)', 'Kg', 'Paket', 'Dilim', 'Tepsi'].map(u => `<option>${u}</option>`).join('')}</select>
     <button class="big primary" data-act="np-add">Ürünü ekle</button>
   </main>${tabs()}`;
+}
+
+/* ================= EXCEL ================= */
+async function exportMonth(offset) {
+  const today = bizDay();
+  let first = today.slice(0, 8) + '01';
+  if (offset < 0) first = addDays(first, -1).slice(0, 8) + '01';
+  const last = offset < 0 ? addDays(today.slice(0, 8) + '01', -1) : today;
+  const ym = first.slice(0, 7), AY = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  const ayAdi = AY[+ym.slice(5) - 1] + ' ' + ym.slice(0, 4);
+  const data = await API.adminData(first, last);
+  const days = computeDays(data), bn = id => (data.accounts.find(a => a.id === id) || {}).name || id;
+  const inM = d => d.day >= first && d.day <= last;
+  const pinfo = k => { const [p, v] = splitK(k), pr = P(p); return [pr ? pr.name : '#' + p, v != null ? 'Boy ' + v : '', pr ? unitShort(pr) : '', priceOf(p, v)]; };
+  // Özet
+  const ozet = [['Şube', 'Satış (₺)', 'Zayi (₺)', 'Net (₺)', 'Zayi oranı %', 'Sayım yapılan gün']]; let tS = 0, tW = 0;
+  for (const b of data.accounts.filter(a => a.role === 'sube')) {
+    const ag = aggregate(days, first, last, b.id); tS += ag.soldTL; tW += ag.wasteTL;
+    ozet.push([b.name, ag.soldTL, ag.wasteTL, ag.soldTL - ag.wasteTL, ag.recTL ? Math.round(ag.wasteTL / ag.recTL * 1000) / 10 : 0, ag.sel.length]);
+  }
+  ozet.push(['TOPLAM', tS, tW, tS - tW, null, null]);
+  // Ürünler (tüm şubeler)
+  const all = aggregate(days, first, last, 'all');
+  const urun = [['Ürün', 'Boy', 'Birim', 'Fiyat (₺)', 'Satılan', 'Satış (₺)', 'Zayi miktar', 'Zayi (₺)', 'Net (₺)']];
+  Object.entries(all.prod).filter(([, r]) => r.s || r.w).sort((a, b) => (b[1].st - b[1].wt) - (a[1].st - a[1].wt))
+    .forEach(([k, r]) => { const [n, v, u, pr] = pinfo(k); urun.push([n, v, u, pr, r.s, r.st, r.w, r.wt, r.st - r.wt]); });
+  // Şube-ürün
+  const subeUrun = [['Şube', 'Ürün', 'Boy', 'Satılan', 'Satış (₺)', 'Zayi miktar', 'Zayi (₺)']];
+  for (const b of data.accounts.filter(a => a.role === 'sube')) {
+    const ag = aggregate(days, first, last, b.id);
+    Object.entries(ag.prod).filter(([, r]) => r.s || r.w).sort((a, c) => c[1].st - a[1].st)
+      .forEach(([k, r]) => { const [n, v] = pinfo(k); subeUrun.push([b.name, n, v, r.s, r.st, r.w, r.wt]); });
+  }
+  // Günlük
+  const gunluk = [['Tarih', 'Gün', 'Şube', 'Satış (₺)', 'Zayi (₺)', 'Sayımı yapan', 'Saat']];
+  days.filter(inM).sort((a, b) => a.day < b.day ? -1 : a.day > b.day ? 1 : a.branch < b.branch ? -1 : 1).forEach(d => {
+    const ag = aggregate([d], d.day, d.day, 'all');
+    gunluk.push([trDate(d.day), DAYS[dow(d.day)], bn(d.branch), d.base ? null : ag.soldTL, ag.wasteTL, d.worker, hhmm(d.at)]);
+  });
+  // Zayi kayıtları
+  const sub = Object.fromEntries(data.submissions.map(s => [s.id, s]));
+  const zayi = [['Tarih', 'Şube', 'Ürün', 'Boy', 'Miktar', 'Etiket', 'Neden', 'Not', 'Tutar (₺)']];
+  data.waste.filter(w => sub[w.sid] && sub[w.sid].day >= first && sub[w.sid].day <= last)
+    .sort((a, b) => sub[a.sid].day < sub[b.sid].day ? -1 : 1)
+    .forEach(w => zayi.push([trDate(sub[w.sid].day), bn(sub[w.sid].branch), (P(w.p) || {}).name || '#' + w.p, w.v != null ? 'Boy ' + w.v : '', +w.q, w.label || '', w.reason || '', w.note || '', +w.q * priceOf(w.p, w.v)]));
+  // Sevkiyatlar
+  const sevk = [['Tarih', 'Şube', 'Gönderen', 'Teslim alan', 'Ürün', 'Boy', 'Gönderilen', 'Gelen', 'Durum']];
+  data.shipments.filter(s => s.day && s.day >= first && s.day <= last).sort((a, b) => a.sent_at < b.sent_at ? -1 : 1)
+    .forEach(s => s.items.forEach(i => sevk.push([trDate(s.day), bn(s.branch), s.sent_by, s.confirmed_by || '', (P(i.p) || {}).name || '#' + i.p, i.v != null ? 'Boy ' + i.v : '', +i.sent, i.rec != null ? +i.rec : null, s.status === 'tamam' ? 'Tam' : s.status === 'eksik' ? 'Eksik' : 'Bekliyor'])));
+  XLSX_MINI.download([
+    { name: 'Özet', rows: [['Mevlana Pastaneleri — ' + ayAdi], ...ozet], head: [1], widths: [22, 16, 14, 16, 14, 18], money: [1, 2, 3], totalRow: ozet.length },
+    { name: 'Ürünler', rows: urun, widths: [30, 8, 8, 11, 10, 14, 12, 12, 14], money: [3, 5, 7, 8] },
+    { name: 'Şube-Ürün', rows: subeUrun, widths: [18, 30, 8, 10, 14, 12, 12], money: [4, 6] },
+    { name: 'Günlük', rows: gunluk, widths: [12, 6, 18, 14, 12, 18, 8], money: [3, 4] },
+    { name: 'Zayi kayıtları', rows: zayi, widths: [12, 18, 28, 8, 9, 10, 14, 20, 12], money: [8] },
+    { name: 'Sevkiyatlar', rows: sevk, widths: [12, 18, 16, 16, 28, 8, 11, 9, 10] }
+  ], `Mevlana-Stok-${ym}.xlsx`);
+  toast(ayAdi + ' Excel dosyası indirildi');
 }
 
 /* ================= GİRİŞ ================= */
@@ -571,6 +633,40 @@ $app.addEventListener('click', async e => {
   if (d.det) { AD.detBranch = d.det; AD.detDay = bizDay(); S.tab = 'detay'; return render(); }
   if (d.detb) { AD.detBranch = d.detb; return render(); }
   if (d.dday) { AD.detDay = addDays(AD.detDay || bizDay(), +d.dday); return render(); }
+  if (d.cancel) {
+    if (!confirm('Bu sevkiyat iptal edilsin mi? Şube artık görmeyecek.')) return;
+    try { await API.cancelShipment(+d.cancel); toast('İptal edildi'); render(); } catch (x) { toast(x.message); }
+    return;
+  }
+  if (d.editc || d.addc) {
+    let k = d.editc, sid = +(d.sid || d.addc);
+    if (!k) {
+      const name = prompt('Hangi ürün? (adını yazın, ör. Tiramisu)'); if (!name) return;
+      const m = S.products.filter(p => trLower(p.name) === trLower(name.trim()) || trLower(p.name).includes(trLower(name.trim())));
+      if (!m.length) return toast('Ürün bulunamadı');
+      const p = m[0], vs = variantsOf(p); let v = null;
+      if (vs) { v = prompt(`${p.name} — hangi boy? (${vs.join(' / ')})`); if (v == null || !vs.includes(v.trim())) return toast('Boy seçilmedi'); v = v.trim(); }
+      k = K(p.id, v);
+    }
+    const [pid, v] = splitK(k);
+    const q = prompt(`${pname(pid, v)} — gün sonu kalan kaç olmalı? (0 = sil)`, d.q || '');
+    if (q == null) return;
+    const n = parseFloat(String(q).replace(',', '.')); if (isNaN(n) || n < 0) return toast('Geçerli bir sayı yazın');
+    try { await API.adminSetCount(sid, pid, v || '', n); await adLoad(true); toast('Düzeltildi'); render(); } catch (x) { toast(x.message); }
+    return;
+  }
+  if (d.editw) {
+    const q = prompt('Zayi miktarı kaç olmalı? (0 = sil)', d.q);
+    if (q == null) return;
+    const n = parseFloat(String(q).replace(',', '.')); if (isNaN(n) || n < 0) return toast('Geçerli bir sayı yazın');
+    try { await API.adminSetWaste(+d.editw, n); await adLoad(true); toast('Düzeltildi'); render(); } catch (x) { toast(x.message); }
+    return;
+  }
+  if (d.xls != null) {
+    t.disabled = true; const old = t.textContent; t.textContent = 'Hazırlanıyor…';
+    try { await exportMonth(+d.xls); } catch (x) { toast(x.message); }
+    t.disabled = false; t.textContent = old; return;
+  }
   if (d.photo) { try { const src = await API.adminPhoto(+d.photo); showPhoto(src); } catch (x) { toast(x.message); } return; }
   if (d.corr) { try { await API.adminSetCorrection(+d.corr, d.st); await adLoad(true); render(); } catch (x) { toast(x.message); } return; }
   if (d.seen) { const sn = store.get('mvs_seen_eksik', []); sn.push(+d.seen); store.set('mvs_seen_eksik', sn); return render(); }
