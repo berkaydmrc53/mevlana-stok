@@ -430,6 +430,15 @@ function adRapor() {
     <h3 class="sec">En az satanlar <small>(raftakinin yüzde kaçı satıldı)</small></h3>${low.length ? bars(low.map(r => [pname(...splitK(r.k)), pct(r.s, r.a)]), v => '%' + v) : '<p class="empty small">Veri yok</p>'}
     <h3 class="sec">En çok zayi olanlar</h3>${waste.length ? bars(waste.map(r => [pname(...splitK(r.k)), r.wt]), tl) : '<p class="empty small">Zayi yok</p>'}
     ${Object.keys(reasons).length ? `<h3 class="sec">Zayi nedenleri</h3>${bars(Object.entries(reasons), tl)}` : ''}
+    <h3 class="sec">Ürün bazında kazanç <small>(satış − zayi kaybı)</small></h3>
+    ${(() => { const all = rows.filter(r => r.s > 0 || r.w > 0).sort((a, b) => (b.st - b.wt) - (a.st - a.wt));
+      if (!all.length) return '<p class="empty small">Veri yok</p>';
+      const tr = r => `<tr><td>${esc(pname(...splitK(r.k)))}</td><td>${num(r.s)}</td><td>${tl(r.st)}</td><td class="neg">${r.wt ? '−' + tl(r.wt) : '–'}</td><td><b>${tl(r.st - r.wt)}</b></td></tr>`;
+      const noPrice = all.filter(r => !priceOf(...splitK(r.k))).length;
+      return `<div class="tbl"><table><thead><tr><th>Ürün</th><th>Satılan</th><th>Satış</th><th>Zayi</th><th>Net</th></tr></thead>
+        <tbody>${all.slice(0, 15).map(tr).join('')}</tbody></table></div>
+        ${all.length > 15 ? `<details><summary class="chip">Tüm ürünler (${all.length})</summary><div class="tbl"><table><tbody>${all.slice(15).map(tr).join('')}</tbody></table></div></details>` : ''}
+        ${noPrice ? `<p class="muted">${noPrice} ürünün fiyatı girilmemiş, onlar 0 ₺ görünür. Ayarlar'dan ekleyebilirsin.</p>` : ''}`; })()}
     <h3 class="sec">Haftanın günlerine göre ortalama satış</h3>${bars([1, 2, 3, 4, 5, 6, 0].map(i => [DAYS[i], ag.byDow[i]]), tl)}
     <h3 class="sec">Günlük satış</h3>${Object.keys(ag.byDay).length ? bars(Object.entries(ag.byDay).sort().map(([d, v]) => [trDate(d).slice(0, 5) + ' ' + DAYS[dow(d)], v]), tl) : '<p class="empty small">Satış hesabı için en az iki günlük sayım gerekir.</p>'}
   </main>${tabs()}`;

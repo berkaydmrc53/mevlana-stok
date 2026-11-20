@@ -1,6 +1,6 @@
 // Uygulama dosyalarını önbellekte tutar; veriler (Supabase) her zaman internetten gelir.
-const VERSION = 'mvs-v2';
-const FILES = ['./', 'index.html', 'style.css?v=2', 'api.js?v=2', 'app.js?v=2', 'logo.png', 'favicon.png', 'icon-192.png', 'manifest.webmanifest'];
+const VERSION = 'mvs-v3';
+const FILES = ['./', 'index.html', 'style.css?v=3', 'api.js?v=3', 'app.js?v=3', 'logo.png', 'favicon.png', 'icon-192.png', 'manifest.webmanifest'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))));
