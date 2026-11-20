@@ -474,7 +474,7 @@ function adTalep() {
         : `<div class="note ${c.status === 'yapildi' ? 'ok' : ''}">${c.status === 'yapildi' ? 'Tamamlandı' : 'Reddedildi'}</div>`}</section>`).join('') : '<p class="empty small">Talep yok</p>'}
     <h3 class="sec">Eksik gelen sevkiyatlar</h3>
     ${eks.length ? eks.map(s => `<section class="card ${seen.includes(s.id) ? '' : 'new'}"><div class="card-h"><b>${esc(bn(s.branch))}</b><small>${dayTime(s.confirmed_at)} · ${esc(s.confirmed_by)}</small></div>
-      <ul class="ln">${s.items.filter(i => +i.rec < +i.sent).map(i => `<li><span>${esc(pname(i.p, i.v))}</span><b>${num(i.sent)} gönderildi → ${num(i.rec)} geldi</b></li>`).join('')}</ul>
+      <ul class="ln">${s.items.filter(i => +i.rec < +i.sent).map(i => `<li><span>${esc(pname(i.p, i.v))}</span><b>${num(i.sent)} istenildi → ${num(i.rec)} geldi</b></li>`).join('')}</ul>
       ${seen.includes(s.id) ? '' : `<button class="big ghost" data-seen="${s.id}">Gördüm</button>`}</section>`).join('') : '<p class="empty small">Eksik sevkiyat yok</p>'}
   </main>${tabs()}`;
 }
