@@ -17,3 +17,4 @@ Aynı çalışma ücretsiz Supabase projesinin uykuya geçmesini de engeller.
 
 ## Veritabanı güncellemeleri
 `supabase/schema.sql` ilk kurulum, `supabase/002_guncelleme.sql` PIN kilidi, düzeltme ve iptal fonksiyonları.
+`supabase/003_ozellikler.sql` sayıldı/sayılmadı, çıkış türleri, müşteri talebi, değişiklik kaydı, fiyat geçmişi, çalışan listesi.

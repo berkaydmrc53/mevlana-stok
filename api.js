@@ -40,6 +40,7 @@ const API = (() => {
   return {
     get session() { return session; },
     accounts: () => call('login_accounts'),
+    loginWorkers: acc => call('login_workers', { p_account: acc }),
     async login(account, worker, pin) {
       const s = await call('login', { p_account: account, p_worker: worker, p_pin: pin });
       if (s && s.error) throw new Error(s.error);
@@ -60,6 +61,10 @@ const API = (() => {
     adminSetCorrection: (id, st) => call('admin_set_correction', { ...t(), p_id: id, p_status: st }),
     adminSetCount: (sid, pid, v, q) => call('admin_set_count', { ...t(), p_sid: sid, p_product: pid, p_variant: v, p_qty: q }),
     adminSetWaste: (id, q) => call('admin_set_waste', { ...t(), p_id: id, p_qty: q }),
-    cancelShipment: id => call('cancel_shipment', { ...t(), p_id: id })
+    cancelShipment: id => call('cancel_shipment', { ...t(), p_id: id }),
+    addMiss: (pid, v, q, note) => call('add_miss', { ...t(), p_product: pid, p_variant: v, p_qty: q, p_note: note }),
+    myExpected: () => call('my_expected', t()),
+    adminWorkers: (action, acc, name) => call('admin_workers', { ...t(), p_action: action, p_account: acc, p_name: name }),
+    adminAudit: () => call('admin_audit', t())
   };
 })();
